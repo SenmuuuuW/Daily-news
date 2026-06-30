@@ -1,0 +1,5 @@
+name: pro
+max_interest_topics: 25
+collected_items: 60
+summary_length: long
+advanced_analysis_enabled: true

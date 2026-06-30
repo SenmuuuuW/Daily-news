@@ -1,0 +1,5 @@
+name: plus
+max_interest_topics: 10
+collected_items: 30
+summary_length: medium
+advanced_analysis_enabled: false

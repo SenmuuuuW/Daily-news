@@ -1,0 +1,5 @@
+name: free
+max_interest_topics: 3
+collected_items: 10
+summary_length: short
+advanced_analysis_enabled: false
