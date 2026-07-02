@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from urllib.parse import quote_plus
 
 from sources.models import SourceItem
@@ -23,9 +25,10 @@ class GitHubTrendingFetcher:
                 items.append(
                     SourceItem(
                         title=repo.get("full_name", ""),
+                        content=repo.get("description") or "",
                         url=repo.get("html_url", ""),
                         source=self.source_name,
-                        summary=repo.get("description"),
+                        category=topic,
                         author=repo.get("owner", {}).get("login"),
                         tags=[topic],
                         score=float(repo.get("stargazers_count") or 0),

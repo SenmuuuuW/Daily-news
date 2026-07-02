@@ -1,4 +1,6 @@
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
@@ -13,7 +15,7 @@ logger = get_logger(__name__)
 @router.post("/webhook/wecom")
 async def receive_wecom_message(
     request: Request,
-    x_wecom_token: str | None = Header(default=None),
+    x_wecom_token: Optional[str] = Header(default=None),
     user_service: UserService = Depends(get_user_service),
 ) -> dict[str, Any]:
     if settings.wecom_incoming_token and x_wecom_token != settings.wecom_incoming_token:

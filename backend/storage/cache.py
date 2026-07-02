@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 import yaml
@@ -5,7 +7,7 @@ import yaml
 from config import settings
 
 
-@dataclass(slots=True)
+@dataclass
 class PlanConfig:
     name: str
     max_interest_topics: int

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from urllib.parse import quote_plus
@@ -33,10 +35,11 @@ class ArxivFetcher:
             items.append(
                 SourceItem(
                     title=" ".join(title.split()),
+                    content=" ".join(summary.split()),
                     url=url,
                     source=self.source_name,
-                    summary=" ".join(summary.split()),
                     published_at=_parse_datetime(published),
+                    category=topics[0] if topics else None,
                     tags=topics,
                 )
             )

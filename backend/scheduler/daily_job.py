@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -37,11 +39,18 @@ class DailyDigestJob:
     async def run(self) -> None:
         users = self.user_service.list_active_users()
         logger.info("Starting daily digest job for %s active users", len(users))
+        if not users:
+            logger.info("No active users found; nothing to send")
+            return
 
         for user in users:
             plan = self.plan_cache.get_plan(user.subscription_plan)
             interests = user.interests[: plan.max_interest_topics]
+            if not interests:
+                logger.info("Skipping user_id=%s because no interests are configured", user.user_id)
+                continue
             try:
+                logger.info("Building digest for user_id=%s interests=%s", user.user_id, interests)
                 collected = await self.collector.collect(interests, plan.collected_items)
                 cleaned = clean_items(collected)
                 ranked = rank_items(cleaned, interests, plan.collected_items)
@@ -58,6 +67,12 @@ class DailyDigestJob:
                     status="sent" if sent else "skipped",
                     item_count=len(ranked),
                     message=message,
+                )
+                logger.info(
+                    "Digest finished for user_id=%s status=%s item_count=%s",
+                    user.user_id,
+                    "sent" if sent else "skipped",
+                    len(ranked),
                 )
             except Exception as exc:
                 logger.exception("Digest failed for user_id=%s", user.user_id)

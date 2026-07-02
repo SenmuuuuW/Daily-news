@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from sources.models import SourceItem
@@ -7,16 +9,18 @@ def rank_items(items: list[SourceItem], interests: list[str], limit: int) -> lis
     topic_keys = [topic.casefold() for topic in interests]
 
     def score(item: SourceItem) -> float:
-        text = f"{item.title} {item.summary or ''}".casefold()
-        topic_score = sum(5 for topic in topic_keys if topic in text)
+        text = f"{item.title} {item.content or ''} {item.category or ''}".casefold()
+        topic_score = sum(10 for topic in topic_keys if topic in text)
         source_score = item.score / 1000 if item.score else 0
-        recency_score = _recency_score(item.published_at)
-        return topic_score + source_score + recency_score
+        return topic_score + source_score
 
     for item in items:
         item.score = score(item)
 
-    return sorted(items, key=lambda item: item.score, reverse=True)[:limit]
+    return sorted(
+        items,
+        key=lambda item: (-item.score, item.source, item.title.casefold()),
+    )[:limit]
 
 
 def _recency_score(published_at: datetime | None) -> float:

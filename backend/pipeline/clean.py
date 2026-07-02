@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 from html import unescape
 
@@ -11,7 +13,7 @@ def clean_items(items: list[SourceItem]) -> list[SourceItem]:
 
     for item in items:
         title = _clean_text(item.title)
-        summary = _clean_text(item.summary or "")
+        content = _clean_text(item.content or "")
         title_key = title.casefold()
         url_key = item.url.strip()
 
@@ -23,7 +25,7 @@ def clean_items(items: list[SourceItem]) -> list[SourceItem]:
         seen_urls.add(url_key)
         seen_titles.add(title_key)
         item.title = title
-        item.summary = summary
+        item.content = content
         item.url = url_key
         cleaned.append(item)
     return cleaned

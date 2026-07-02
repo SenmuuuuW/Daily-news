@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from functools import lru_cache
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,8 +26,8 @@ class Settings(BaseSettings):
     digest_minute: int = 0
     timezone: str = "Asia/Shanghai"
 
-    wecom_incoming_token: str | None = None
-    wecom_push_webhook_url: str | None = None
+    wecom_incoming_token: Optional[str] = None
+    wecom_push_webhook_url: Optional[str] = None
     wecom_request_timeout_seconds: float = 10.0
 
     rss_feeds: list[str] = Field(default_factory=list)

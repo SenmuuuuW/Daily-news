@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -21,6 +23,7 @@ def init_db() -> None:
     schema = (BASE_DIR / "storage" / "schema.sql").read_text(encoding="utf-8")
     with sqlite3.connect(db_path) as conn:
         conn.executescript(schema)
+    print(f"Initialized SQLite database at {db_path}")
 
 
 @contextmanager
@@ -32,3 +35,7 @@ def get_connection():
         conn.commit()
     finally:
         conn.close()
+
+
+if __name__ == "__main__":
+    init_db()

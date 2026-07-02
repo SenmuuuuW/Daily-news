@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from sources.models import SourceItem
@@ -17,6 +19,8 @@ def format_wecom_digest(user: User, summary: str, items: list[SourceItem]) -> st
     ]
     for index, item in enumerate(items, start=1):
         lines.append(f"{index}. {item.title}")
+        if item.content:
+            lines.append(f"   {item.content[:120]}")
         lines.append(f"   {item.url}")
 
     lines.append("")

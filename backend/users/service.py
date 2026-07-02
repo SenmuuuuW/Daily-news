@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import lru_cache
 
 from config import settings
@@ -27,6 +29,9 @@ class UserService:
             subscription_plan=subscription_plan or settings.default_plan,
         )
         return self.repository.upsert(user)
+
+    def get_user(self, user_id: str) -> User | None:
+        return self.repository.get(user_id)
 
     def upsert_interests(
         self,
