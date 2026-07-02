@@ -1,81 +1,176 @@
 from __future__ import annotations
 
-from datetime import datetime
+from calendar import timegm
+from datetime import datetime, timezone
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import feedparser
 
 from config import settings
 from sources.models import SourceItem
+from utils.http import HTTPClient
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+DEFAULT_FEEDS = ["https://hnrss.org/frontpage"]
 
 
 class RSSFetcher:
     source_name = "rss"
 
-    def __init__(self, feed_urls: list[str] | None = None):
+    def __init__(self, feed_urls: list[str] | None = None, http_client: HTTPClient | None = None):
+        self.http_client = http_client or HTTPClient()
         self.feed_urls = feed_urls if feed_urls is not None else settings.rss_feeds
         if not self.feed_urls:
-            self.feed_urls = ["https://hnrss.org/frontpage"]
+            if feed_urls is None and not settings.rss_feeds_configured:
+                self.feed_urls = DEFAULT_FEEDS
+                logger.info("No RSS feeds configured; using default public RSS feed")
+            else:
+                logger.warning("No valid RSS feeds configured")
+        logger.info("RSS feeds configured count=%s", len(self.feed_urls))
 
     async def fetch(self, topics: list[str], limit: int) -> list[SourceItem]:
+        if limit <= 0 or not self.feed_urls:
+            return []
+
         items: list[SourceItem] = []
-        topic_keys = [topic.casefold() for topic in topics]
+        topic_map = {topic: topic.casefold() for topic in topics if topic.strip()}
+        succeeded = 0
+        failed = 0
 
-        try:
-            for feed_url in self.feed_urls:
-                parsed = feedparser.parse(feed_url)
-                for entry in parsed.entries:
-                    title = getattr(entry, "title", "")
-                    content = getattr(entry, "summary", "")
-                    haystack = f"{title} {content}".casefold()
-                    if topic_keys and not any(topic in haystack for topic in topic_keys):
-                        continue
-                    items.append(
-                        SourceItem(
-                            title=title,
-                            content=content,
-                            url=getattr(entry, "link", feed_url),
-                            source=self.source_name,
-                            published_at=_parse_feed_date(entry),
-                            category=topics[0] if topics else None,
-                            tags=topics,
-                        )
+        for feed_url in self.feed_urls:
+            try:
+                parsed = await self._parse_feed(feed_url)
+                succeeded += 1
+            except Exception as exc:
+                failed += 1
+                logger.warning(
+                    "RSS feed failed url=%s error=%s: %s",
+                    _redact_url(feed_url),
+                    type(exc).__name__,
+                    exc,
+                )
+                continue
+
+            if getattr(parsed, "bozo", False):
+                logger.warning(
+                    "RSS feed parsed with warnings url=%s error=%s",
+                    _redact_url(feed_url),
+                    getattr(parsed, "bozo_exception", "unknown"),
+                )
+
+            feed_title = _clean_text(getattr(parsed.feed, "title", "")) if getattr(parsed, "feed", None) else ""
+            source_label = feed_title or _host_label(feed_url)
+
+            for entry in parsed.entries:
+                item = _entry_to_item(entry, feed_url, source_label, topics, topic_map)
+                if item is None:
+                    continue
+                items.append(item)
+                if len(items) >= limit:
+                    logger.info(
+                        "RSS fetch complete feeds_success=%s feeds_failed=%s raw_items=%s limit=%s",
+                        succeeded,
+                        failed,
+                        len(items),
+                        limit,
                     )
-                    if len(items) >= limit:
-                        return items
-        except Exception:
-            logger.exception("RSS fetch failed; using safe mock items")
+                    return items
 
-        return items or mock_items(topics, limit)
+        logger.info(
+            "RSS fetch complete feeds_success=%s feeds_failed=%s raw_items=%s limit=%s",
+            succeeded,
+            failed,
+            len(items),
+            limit,
+        )
+        return items
+
+    async def _parse_feed(self, feed_url: str):
+        text = await self.http_client.get_text(feed_url)
+        return feedparser.parse(text)
+
+
+def _entry_to_item(entry, feed_url: str, source_label: str, topics: list[str], topic_map: dict[str, str]) -> SourceItem | None:
+    title = _clean_text(getattr(entry, "title", ""))
+    url = _normalize_url(getattr(entry, "link", ""), feed_url)
+    if not title or not url:
+        return None
+
+    content = _clean_text(
+        getattr(entry, "summary", "")
+        or getattr(entry, "description", "")
+        or _content_value(entry)
+    )
+    haystack = f"{title} {content}".casefold()
+    matched_topics = [topic for topic, key in topic_map.items() if key and key in haystack]
+    if topic_map and not matched_topics:
+        return None
+
+    return SourceItem(
+        title=title,
+        content=content,
+        url=url,
+        source=source_label,
+        source_url=feed_url,
+        published_at=_parse_feed_date(entry),
+        category=matched_topics[0] if matched_topics else (topics[0] if topics else "General"),
+        tags=topics,
+        matched_topics=matched_topics,
+        raw_score=float(len(matched_topics)),
+    )
+
+
+def _content_value(entry) -> str:
+    values = getattr(entry, "content", None)
+    if not values:
+        return ""
+    first = values[0]
+    if isinstance(first, dict):
+        return str(first.get("value", ""))
+    return str(getattr(first, "value", ""))
 
 
 def _parse_feed_date(entry) -> datetime | None:
     parsed = getattr(entry, "published_parsed", None) or getattr(entry, "updated_parsed", None)
     if not parsed:
         return None
-    return datetime(*parsed[:6])
+    return datetime.fromtimestamp(timegm(parsed), tz=timezone.utc)
 
 
-def mock_items(topics: list[str], limit: int) -> list[SourceItem]:
-    interests = topics or ["technology"]
-    items: list[SourceItem] = []
-    for index, topic in enumerate(interests, start=1):
-        items.append(
-            SourceItem(
-                title=f"{topic} daily signal #{index}",
-                content=(
-                    f"Mock digest item about {topic}. This placeholder is used when RSS "
-                    "feeds are unavailable, so the local MVP can still run end-to-end."
-                ),
-                url=f"https://example.com/digest/{topic.replace(' ', '-').lower()}",
-                source="mock-rss",
-                published_at=None,
-                category=topic,
-                tags=[topic],
-            )
+def _clean_text(value: str) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _host_label(feed_url: str) -> str:
+    host = urlparse(feed_url).netloc
+    return host or "RSS"
+
+
+def _normalize_url(value: str, feed_url: str) -> str:
+    raw = _clean_text(value)
+    if not raw:
+        return ""
+    parsed = urlparse(urljoin(feed_url, raw))
+    query_pairs = [
+        (key, val)
+        for key, val in parse_qsl(parsed.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_") and key.lower() not in {"fbclid", "gclid"}
+    ]
+    return urlunparse(
+        (
+            parsed.scheme.lower(),
+            parsed.netloc.lower(),
+            parsed.path.rstrip("/"),
+            "",
+            urlencode(query_pairs, doseq=True),
+            "",
         )
-        if len(items) >= limit:
-            break
-    return items
+    )
+
+
+def _redact_url(feed_url: str) -> str:
+    parsed = urlparse(feed_url)
+    if not parsed.query:
+        return feed_url
+    return parsed._replace(query="...").geturl()

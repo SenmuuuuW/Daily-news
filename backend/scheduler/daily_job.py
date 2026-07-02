@@ -47,13 +47,15 @@ class DailyDigestJob:
             plan = self.plan_cache.get_plan(user.subscription_plan)
             interests = user.interests[: plan.max_interest_topics]
             if not interests:
-                logger.info("Skipping user_id=%s because no interests are configured", user.user_id)
-                continue
+                logger.info("No interests configured for user_id=%s; collecting general RSS items", user.user_id)
             try:
                 logger.info("Building digest for user_id=%s interests=%s", user.user_id, interests)
                 collected = await self.collector.collect(interests, plan.collected_items)
+                logger.info("Collected raw items for user_id=%s count=%s", user.user_id, len(collected))
                 cleaned = clean_items(collected)
+                logger.info("Items after dedupe for user_id=%s count=%s", user.user_id, len(cleaned))
                 ranked = rank_items(cleaned, interests, plan.collected_items)
+                logger.info("Items after ranking for user_id=%s count=%s", user.user_id, len(ranked))
                 summary = await self.summarizer.summarize(
                     interests=interests,
                     items=ranked,
@@ -61,6 +63,7 @@ class DailyDigestJob:
                     advanced_analysis_enabled=plan.advanced_analysis_enabled,
                 )
                 message = format_wecom_digest(user, summary, ranked)
+                logger.info("Attempting WeCom push for user_id=%s", user.user_id)
                 sent = await self.push_client.send_text(user.user_id, message)
                 self.log_repository.save(
                     user_id=user.user_id,
@@ -69,7 +72,7 @@ class DailyDigestJob:
                     message=message,
                 )
                 logger.info(
-                    "Digest finished for user_id=%s status=%s item_count=%s",
+                    "Digest finished for user_id=%s push_status=%s item_count=%s",
                     user.user_id,
                     "sent" if sent else "skipped",
                     len(ranked),

@@ -4,6 +4,42 @@ Backend MVP for an Enterprise WeChat daily digest system. It receives WeCom mess
 
 This repository intentionally contains no website, dashboard, login system, payment, Kubernetes, Docker setup, microservices, or agent framework.
 
+## Current Test Version: RSS-first Daily Digest MVP
+
+This version focuses on making the current Daily WeCom Digest MVP usable with RSS as the main information source. It:
+
+- reads RSS feeds from environment configuration
+- filters feed entries by user interests/topics when topics are configured
+- collects general RSS items when no topics are configured
+- cleans and deduplicates RSS items
+- ranks relevant items with deterministic rules
+- summarizes RSS entries into a mobile-friendly digest
+- optionally pushes the digest to Enterprise WeChat
+- logs digest runs, RSS collection counts, ranking counts, and push status
+
+## What Changed In This Version
+
+- Improved RSS feed parsing from `DAILY_DIGEST_RSS_FEEDS`.
+- Added RSS config examples for JSON arrays and comma-separated URLs.
+- Added safer handling for bad or unreachable feeds.
+- Improved RSS item normalization and feed metadata.
+- Improved deduplication by normalized URL, normalized title, and simple title similarity.
+- Improved deterministic ranking using topic matches, recency, source hints, and summary quality.
+- Cleaned up the Enterprise WeChat report format.
+- Added clearer logging for RSS collection, dedupe, ranking, and push attempts.
+- Added safer WeCom response validation for JSON responses with `errcode`.
+- Added `.env.example` and a local RSS digest helper.
+
+## Current Limitations
+
+- RSS is the main source for now.
+- There is no full customer/bot admin system yet.
+- There is no customer login.
+- Payment is not implemented.
+- The app does not use risky scraping or login-protected sources.
+- Summaries are deterministic/simple unless an LLM integration is added later.
+- Manual review may still be needed before enabling automatic customer-facing sends.
+
 ## Architecture
 
 The backend is a modular FastAPI application with SQLite storage:
@@ -11,7 +47,7 @@ The backend is a modular FastAPI application with SQLite storage:
 - `api/`: health check and Enterprise WeChat webhook callbacks.
 - `users/`: user model, repository, and service layer.
 - `plans/`: free, plus, and pro plan configuration.
-- `sources/`: RSS, GitHub, arXiv, and future news/API fetchers.
+- `sources/`: RSS-first fetchers plus GitHub, arXiv, and future news/API fetcher modules.
 - `pipeline/`: collection, cleaning, deduplication, ranking, summarization, and WeCom formatting.
 - `push/`: Enterprise WeChat text push client.
 - `scheduler/`: daily digest job that can run under APScheduler or cron.
@@ -88,6 +124,13 @@ cd backend
 python -m scheduler.daily_job
 ```
 
+Seed a local test user and run an RSS digest in one command:
+
+```bash
+cd backend
+DAILY_DIGEST_TEST_TOPICS="AI, security" python -m scripts.test_rss_digest
+```
+
 If no Enterprise WeChat push webhook is configured, the generated message is printed to the console and logged as a mock success. This keeps the MVP runnable without external integrations.
 
 ## Configuration
@@ -101,10 +144,28 @@ DAILY_DIGEST_WECOM_PUSH_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/
 DAILY_DIGEST_DIGEST_HOUR=9
 DAILY_DIGEST_DIGEST_MINUTE=0
 DAILY_DIGEST_TIMEZONE=Asia/Shanghai
+DAILY_DIGEST_RSS_FEEDS='["https://example.com/rss.xml"]'
 ```
 
-For RSS, set `DAILY_DIGEST_RSS_FEEDS` using the format supported by `pydantic-settings` for list values, for example a JSON array string.
-If RSS or external fetches are unavailable, the RSS layer returns safe mock items so the local daily job still completes.
+Copy `.env.example` to `.env` for local development and adjust the feed list:
+
+```bash
+cp .env.example .env
+```
+
+For RSS, set `DAILY_DIGEST_RSS_FEEDS` as either a JSON array string:
+
+```bash
+DAILY_DIGEST_RSS_FEEDS='["https://example.com/rss.xml","https://example.com/feed"]'
+```
+
+or a comma-separated list:
+
+```bash
+DAILY_DIGEST_RSS_FEEDS=https://example.com/rss.xml,https://example.com/feed
+```
+
+If the value cannot be parsed, the app logs a warning and uses an empty feed list instead of crashing. If no RSS feed is configured at all, the local MVP uses a public default feed so the daily job can still be tested.
 
 ## Enterprise WeChat Webhook
 
