@@ -6,3 +6,5 @@ __pycache__/
 *.sqlite
 *.sqlite3
 .DS_Store
+outputs/rss_tests/
+backend/outputs/rss_tests/

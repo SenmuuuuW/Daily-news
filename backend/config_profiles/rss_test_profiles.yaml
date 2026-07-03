@@ -1,0 +1,91 @@
+# RSS test profiles for local real-world collection checks.
+#
+# Use only public RSS feeds, official APIs, or sources you are authorized to use.
+# Do not add login-protected feeds, scrape websites, or bypass anti-bot controls.
+# Before production use, review each RSS source's terms, copyright rules,
+# commercial permissions, robots/source policies, and customer-specific risk.
+
+profiles:
+  ai_tech:
+    name: ai_tech
+    description: Public AI and technology signals from safe RSS sources.
+    rss_feeds:
+      - https://openai.com/news/rss.xml
+      - https://www.technologyreview.com/feed/
+    topics:
+      - AI
+      - artificial intelligence
+      - machine learning
+      - large language model
+      - generative AI
+      - AI regulation
+      - AI safety
+      - cybersecurity
+      - enterprise AI
+    exclusions:
+      - coupon
+      - giveaway
+      - rumor
+      - stock price
+      - crypto price
+      - gaming benchmark
+    max_items: 10
+    min_score: 8
+
+  law_policy:
+    name: law_policy
+    description: Public legal, regulatory, copyright, court, and federal policy signals.
+    rss_feeds:
+      - https://www.uscourts.gov/news/rss
+      - https://www.loc.gov/rss/copyright/rss.xml
+      - https://www.loc.gov/rss/copyright/fedreg.xml
+      - https://www.govinfo.gov/rss/bills.xml
+    topics:
+      - regulation
+      - policy
+      - court
+      - lawsuit
+      - copyright
+      - privacy
+      - antitrust
+      - enforcement
+      - artificial intelligence
+      - AI regulation
+    exclusions:
+      - sports
+      - entertainment
+      - celebrity
+      - lottery
+      - unrelated hearing
+      - Federal Register Vol.
+    max_items: 10
+    min_score: 6
+
+  target_vertical:
+    name: target_vertical
+    description: Editable starter profile for a customer vertical; currently tuned for enterprise security/compliance monitoring.
+    # Replace these with the customer's authorized industry feeds before serious testing.
+    # Keep RSS source terms and commercial permissions under review before production use.
+    rss_feeds:
+      - https://www.nist.gov/news-events/news/rss.xml?category=Cybersecurity
+      - https://www.sec.gov/news/pressreleases.rss
+      - https://www.securityweek.com/feed/
+    topics:
+      - cybersecurity
+      - vulnerability
+      - ransomware
+      - supply chain
+      - data breach
+      - compliance
+      - enforcement
+      - risk management
+      - zero trust
+      - critical infrastructure
+    exclusions:
+      - coupon
+      - giveaway
+      - consumer gadget
+      - game trailer
+      - stock rumor
+    max_items: 10
+    min_score: 6

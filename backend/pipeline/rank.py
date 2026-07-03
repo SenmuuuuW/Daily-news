@@ -6,12 +6,19 @@ from urllib.parse import urlparse
 from sources.models import SourceItem
 
 
-def rank_items(items: list[SourceItem], interests: list[str], limit: int) -> list[SourceItem]:
+def rank_items(
+    items: list[SourceItem],
+    interests: list[str],
+    limit: int,
+    exclusions: list[str] | None = None,
+    min_score: float | None = None,
+) -> list[SourceItem]:
     if limit <= 0:
         return []
 
     topics = [topic.strip() for topic in interests if topic.strip()]
     topic_keys = [(topic, topic.casefold()) for topic in topics]
+    exclusion_keys = [(value.strip(), value.strip().casefold()) for value in (exclusions or []) if value.strip()]
 
     def score(item: SourceItem) -> float:
         text = f"{item.title} {item.content or ''} {item.category or ''}".casefold()
@@ -29,40 +36,53 @@ def rank_items(items: list[SourceItem], interests: list[str], limit: int) -> lis
         if title_matches:
             boost = 12 * len(set(title_matches))
             score_value += boost
-            reasons.append(f"title_match+{boost:g}")
+            reasons.append(f"matched topic in title: {', '.join(sorted(set(title_matches), key=str.casefold))} (+{boost:g})")
         if summary_matches:
             boost = 6 * len(set(summary_matches))
             score_value += boost
-            reasons.append(f"summary_match+{boost:g}")
+            reasons.append(f"matched topic in summary: {', '.join(sorted(set(summary_matches), key=str.casefold))} (+{boost:g})")
+        phrase_matches = [topic for topic in matched_topics if " " in topic.strip()]
+        if phrase_matches:
+            boost = 4 * len(phrase_matches)
+            score_value += boost
+            reasons.append(f"phrase match boost: {', '.join(phrase_matches)} (+{boost:g})")
         if len(matched_topics) > 1:
             boost = 3 * (len(matched_topics) - 1)
             score_value += boost
-            reasons.append(f"multi_topic+{boost:g}")
+            reasons.append(f"multi-topic match boost: {len(matched_topics)} topics (+{boost:g})")
         if not topic_keys and text:
             score_value += 2
-            reasons.append("general_item+2")
+            reasons.append("general RSS item (+2)")
+
+        excluded_terms = [value for value, key in exclusion_keys if key and key in text]
+        if excluded_terms:
+            penalty = 15 * len(set(excluded_terms))
+            score_value -= penalty
+            reasons.append(
+                f"excluded keyword penalty: {', '.join(sorted(set(excluded_terms), key=str.casefold))} (-{penalty:g})"
+            )
 
         recency = _recency_score(item.published_at)
         if recency:
             score_value += recency
-            reasons.append(f"recent+{recency:g}")
+            reasons.append(f"recent item boost (+{recency:g})")
 
         age_penalty = _age_penalty(item.published_at)
         if age_penalty:
             score_value -= age_penalty
-            reasons.append(f"old-{age_penalty:g}")
+            reasons.append(f"stale published_at penalty (-{age_penalty:g})")
 
         if _trusted_source(item):
             score_value += 1.5
-            reasons.append("trusted_source+1.5")
+            reasons.append("trusted/official source boost (+1.5)")
 
         if not item.content:
             score_value -= 2
-            reasons.append("missing_summary-2")
+            reasons.append("missing summary penalty (-2)")
 
         if item.raw_score:
             score_value += min(item.raw_score, 5)
-            reasons.append(f"raw+{min(item.raw_score, 5):g}")
+            reasons.append(f"source match score (+{min(item.raw_score, 5):g})")
 
         item.rank_reason = ", ".join(reasons) if reasons else "baseline"
         item.raw_score = item.raw_score or score_value
@@ -71,10 +91,13 @@ def rank_items(items: list[SourceItem], interests: list[str], limit: int) -> lis
     for item in items:
         item.score = score(item)
 
-    return sorted(
+    ranked = sorted(
         items,
         key=lambda item: (-item.score, item.source, item.title.casefold()),
-    )[:limit]
+    )
+    if min_score is not None:
+        ranked = [item for item in ranked if item.score >= min_score]
+    return ranked[:limit]
 
 
 def _recency_score(published_at: datetime | None) -> float:
@@ -96,7 +119,7 @@ def _age_penalty(published_at: datetime | None) -> float:
     age_days = max(0, (now - published_at).total_seconds() / 86400)
     if age_days <= 14:
         return 0
-    return min(6, (age_days - 14) / 7)
+    return min(40, (age_days - 14) / 7)
 
 
 def _trusted_source(item: SourceItem) -> bool:

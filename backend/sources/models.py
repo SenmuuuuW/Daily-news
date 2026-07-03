@@ -37,6 +37,10 @@ class SourceItem:
             "source_url": self.source_url,
             "published_at": self.published_at.isoformat() if self.published_at else None,
             "category": self.category,
+            "summary": self.summary,
+            "tags": self.tags,
             "matched_topics": self.matched_topics,
             "raw_score": self.raw_score,
+            "score": self.score,
+            "rank_reason": self.rank_reason,
         }

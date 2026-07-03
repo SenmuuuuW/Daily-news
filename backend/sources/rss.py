@@ -18,8 +18,14 @@ DEFAULT_FEEDS = ["https://hnrss.org/frontpage"]
 class RSSFetcher:
     source_name = "rss"
 
-    def __init__(self, feed_urls: list[str] | None = None, http_client: HTTPClient | None = None):
+    def __init__(
+        self,
+        feed_urls: list[str] | None = None,
+        http_client: HTTPClient | None = None,
+        stop_at_limit: bool = True,
+    ):
         self.http_client = http_client or HTTPClient()
+        self.stop_at_limit = stop_at_limit
         self.feed_urls = feed_urls if feed_urls is not None else settings.rss_feeds
         if not self.feed_urls:
             if feed_urls is None and not settings.rss_feeds_configured:
@@ -27,9 +33,11 @@ class RSSFetcher:
                 logger.info("No RSS feeds configured; using default public RSS feed")
             else:
                 logger.warning("No valid RSS feeds configured")
+        self.last_metrics = _empty_metrics(len(self.feed_urls))
         logger.info("RSS feeds configured count=%s", len(self.feed_urls))
 
     async def fetch(self, topics: list[str], limit: int) -> list[SourceItem]:
+        self.last_metrics = _empty_metrics(len(self.feed_urls))
         if limit <= 0 or not self.feed_urls:
             return []
 
@@ -44,6 +52,8 @@ class RSSFetcher:
                 succeeded += 1
             except Exception as exc:
                 failed += 1
+                self.last_metrics["feed_failure_count"] = failed
+                self.last_metrics["failed_feeds"].append(_redact_url(feed_url))
                 logger.warning(
                     "RSS feed failed url=%s error=%s: %s",
                     _redact_url(feed_url),
@@ -61,13 +71,16 @@ class RSSFetcher:
 
             feed_title = _clean_text(getattr(parsed.feed, "title", "")) if getattr(parsed, "feed", None) else ""
             source_label = feed_title or _host_label(feed_url)
+            self.last_metrics["feed_success_count"] = succeeded
+            self.last_metrics["succeeded_feeds"].append(_redact_url(feed_url))
 
             for entry in parsed.entries:
                 item = _entry_to_item(entry, feed_url, source_label, topics, topic_map)
                 if item is None:
                     continue
                 items.append(item)
-                if len(items) >= limit:
+                if self.stop_at_limit and len(items) >= limit:
+                    self.last_metrics["raw_item_count"] = len(items)
                     logger.info(
                         "RSS fetch complete feeds_success=%s feeds_failed=%s raw_items=%s limit=%s",
                         succeeded,
@@ -77,6 +90,9 @@ class RSSFetcher:
                     )
                     return items
 
+        self.last_metrics["feed_success_count"] = succeeded
+        self.last_metrics["feed_failure_count"] = failed
+        self.last_metrics["raw_item_count"] = len(items)
         logger.info(
             "RSS fetch complete feeds_success=%s feeds_failed=%s raw_items=%s limit=%s",
             succeeded,
@@ -174,3 +190,14 @@ def _redact_url(feed_url: str) -> str:
     if not parsed.query:
         return feed_url
     return parsed._replace(query="...").geturl()
+
+
+def _empty_metrics(feed_count: int) -> dict:
+    return {
+        "feed_count": feed_count,
+        "feed_success_count": 0,
+        "feed_failure_count": 0,
+        "raw_item_count": 0,
+        "succeeded_feeds": [],
+        "failed_feeds": [],
+    }

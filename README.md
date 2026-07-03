@@ -167,6 +167,80 @@ DAILY_DIGEST_RSS_FEEDS=https://example.com/rss.xml,https://example.com/feed
 
 If the value cannot be parsed, the app logs a warning and uses an empty feed list instead of crashing. If no RSS feed is configured at all, the local MVP uses a public default feed so the daily job can still be tested.
 
+## Real RSS Testing
+
+Use the profile runner to test real public RSS sources without sending to Enterprise WeChat by default:
+
+```bash
+cd backend
+python -m scripts.run_rss_profile --profile ai_tech
+python -m scripts.run_rss_profile --profile law_policy
+python -m scripts.run_rss_profile --profile target_vertical
+```
+
+Optional arguments:
+
+```bash
+python -m scripts.run_rss_profile --profile ai_tech --limit 10
+python -m scripts.run_rss_profile --profile ai_tech --output outputs/rss_tests
+```
+
+Outputs are saved under:
+
+```text
+outputs/rss_tests/
+```
+
+Each run writes:
+
+- a digest text file
+- a debug JSON file with raw, cleaned, deduped, ranked, selected, and rejected/low-score items
+- a metrics JSON file with feed success/failure counts, item counts, selected items, ranking reasons, and send status
+
+The built-in profile file is:
+
+```text
+backend/config_profiles/rss_test_profiles.yaml
+```
+
+The sample feeds are public RSS examples only. Review source terms, copyright rules, commercial permissions, and customer-specific risk before using any source in production.
+
+## Topic and Ranking Tuning
+
+Edit `backend/config_profiles/rss_test_profiles.yaml` to tune each profile:
+
+- `rss_feeds`: add or remove authorized public RSS feeds
+- `topics`: add keywords or phrases that should increase relevance
+- `exclusions`: add terms that should push irrelevant items down
+- `max_items`: control digest size
+- `min_score`: raise this to make selection stricter, lower it to inspect more borderline items
+
+Inspect `rank_reason` in the debug JSON to understand why each item was selected or rejected. A good digest should have selected items whose titles/summaries clearly match the profile topics, have understandable ranking reasons, and link back to reliable public source pages.
+
+## Safe WeCom Send Test
+
+Dry run, no WeCom send:
+
+```bash
+cd backend
+python -m scripts.run_rss_profile --profile ai_tech
+```
+
+One-time real send test:
+
+```bash
+cd backend
+CONFIRM_WECOM_SEND=YES python -m scripts.run_rss_profile --profile ai_tech --send-wecom
+```
+
+Enterprise WeChat will not send unless all of these are true:
+
+- `--send-wecom` is passed
+- `CONFIRM_WECOM_SEND=YES` is set
+- `DAILY_DIGEST_WECOM_PUSH_WEBHOOK_URL` is set in `.env` or the environment
+
+The webhook URL should stay in `.env` or your shell environment and must not be committed. The app never prints the full webhook URL.
+
 ## Enterprise WeChat Webhook
 
 Point the Enterprise WeChat callback URL at:

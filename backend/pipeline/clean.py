@@ -9,16 +9,15 @@ from sources.models import SourceItem
 
 
 def clean_items(items: list[SourceItem]) -> list[SourceItem]:
-    cleaned: list[SourceItem] = []
-    seen_urls: dict[str, int] = {}
-    seen_titles: dict[str, int] = {}
+    return dedupe_items(normalize_items(items))
 
+
+def normalize_items(items: list[SourceItem]) -> list[SourceItem]:
+    normalized: list[SourceItem] = []
     for item in items:
         title = _clean_text(item.title)
         content = _clean_text(item.content or "")
         url = _normalize_url(item.url)
-        title_key = _normalize_title(title)
-        url_key = _url_key(url)
 
         if not title or not url:
             continue
@@ -26,6 +25,21 @@ def clean_items(items: list[SourceItem]) -> list[SourceItem]:
         item.title = title
         item.content = content
         item.url = url
+        normalized.append(item)
+    return normalized
+
+
+def dedupe_items(items: list[SourceItem]) -> list[SourceItem]:
+    cleaned: list[SourceItem] = []
+    seen_urls: dict[str, int] = {}
+    seen_titles: dict[str, int] = {}
+
+    for item in items:
+        title_key = _normalize_title(item.title)
+        url_key = _url_key(item.url)
+
+        if not title_key or not url_key:
+            continue
 
         duplicate_index = seen_urls.get(url_key)
         if duplicate_index is None:
