@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from config import BASE_DIR, settings
+from delivery.wechat_push import send_wechat_push
 from pipeline.clean import dedupe_items, normalize_items
 from pipeline.format import format_wecom_digest
 from pipeline.rank import rank_items
@@ -43,6 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--profile", required=True, help="Profile name, for example ai_tech")
     parser.add_argument("--limit", type=int, default=None, help="Override profile max_items")
     parser.add_argument("--send-wecom", action="store_true", help="Attempt a one-time real WeCom send")
+    parser.add_argument("--send-wechat", action="store_true", help="Attempt a one-time normal WeChat send through WxPusher")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT_DIR), help="Directory for digest/debug/metrics output")
     parser.add_argument("--profiles-file", default=str(DEFAULT_PROFILE_PATH), help="Path to RSS profile YAML")
     return parser.parse_args()
@@ -110,7 +112,8 @@ async def run_profile(args: argparse.Namespace) -> int:
     )
     empty_reason = _empty_reason(profile, fetcher.last_metrics, raw_items, cleaned_items, deduped_items, selected_items)
 
-    send_result = await _maybe_send_wecom(args, digest)
+    wecom_send_result = await _maybe_send_wecom(args, digest)
+    wechat_send_result = await _maybe_send_wechat(args, profile.name, digest)
     metrics = _build_metrics(
         profile=profile,
         feed_metrics=fetcher.last_metrics,
@@ -122,7 +125,8 @@ async def run_profile(args: argparse.Namespace) -> int:
         rejected_items=rejected_items,
         limit=limit,
         empty_reason=empty_reason,
-        send_result=send_result,
+        send_result=wecom_send_result,
+        wechat_send_result=wechat_send_result,
     )
 
     output_files = _save_outputs(Path(args.output), profile.name, digest, metrics, {
@@ -159,6 +163,36 @@ async def _maybe_send_wecom(args: argparse.Namespace, digest: str) -> dict[str, 
     return {"attempted": True, "sent": bool(sent), "skipped_reasons": []}
 
 
+async def _maybe_send_wechat(args: argparse.Namespace, profile_name: str, digest: str) -> dict[str, Any]:
+    reasons = []
+    if not args.send_wechat:
+        reasons.append("--send-wechat was not passed")
+    if os.getenv("CONFIRM_WECHAT_SEND") != "YES":
+        reasons.append("CONFIRM_WECHAT_SEND=YES is not set")
+    if not settings.enable_wechat_push:
+        reasons.append("DAILY_DIGEST_ENABLE_WECHAT_PUSH=true is not set")
+    if not settings.wxpusher_app_token or settings.wxpusher_app_token == "replace-me":
+        reasons.append("DAILY_DIGEST_WXPUSHER_APP_TOKEN is not set")
+    if not settings.wxpusher_uids and not settings.wxpusher_topic_ids:
+        reasons.append("DAILY_DIGEST_WXPUSHER_UIDS or DAILY_DIGEST_WXPUSHER_TOPIC_IDS is not set")
+
+    if reasons:
+        print("WeChat push skipped: " + "; ".join(reasons))
+        return {"attempted": False, "sent": False, "provider": settings.wechat_push_provider, "skipped_reasons": reasons}
+
+    print("WeChat push enabled for this one run; sending through WxPusher now.")
+    result = await send_wechat_push(title=f"Daily Intelligence Brief - {profile_name}", content=digest)
+    print(f"WeChat push result: ok={result.ok} provider={result.provider} message={result.message}")
+    return {
+        "attempted": True,
+        "sent": result.ok,
+        "provider": result.provider,
+        "status_code": result.status_code,
+        "message": result.message,
+        "skipped_reasons": [],
+    }
+
+
 def _build_metrics(
     profile: RSSProfile,
     feed_metrics: dict[str, Any],
@@ -171,6 +205,7 @@ def _build_metrics(
     limit: int,
     empty_reason: str | None,
     send_result: dict[str, Any],
+    wechat_send_result: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "profile_name": profile.name,
@@ -189,6 +224,7 @@ def _build_metrics(
         "rejected_low_score_examples": _item_summaries(rejected_items),
         "empty_digest_reason": empty_reason,
         "send_result": send_result,
+        "wechat_send_result": wechat_send_result,
     }
 
 

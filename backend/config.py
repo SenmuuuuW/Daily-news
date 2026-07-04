@@ -13,6 +13,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BASE_DIR = Path(__file__).resolve().parent
 ROOT_DIR = BASE_DIR.parent
 RSS_FEEDS_ENV_NAME = "DAILY_DIGEST_RSS_FEEDS"
+WXPUSHER_UIDS_ENV_NAME = "DAILY_DIGEST_WXPUSHER_UIDS"
+WXPUSHER_TOPIC_IDS_ENV_NAME = "DAILY_DIGEST_WXPUSHER_TOPIC_IDS"
 logger = logging.getLogger(__name__)
 
 
@@ -35,10 +37,18 @@ class Settings(BaseSettings):
     wecom_push_webhook_url: Optional[str] = None
     wecom_request_timeout_seconds: float = 10.0
 
+    wechat_push_provider: str = "wxpusher"
+    enable_wechat_push: bool = False
+    wxpusher_app_token: Optional[str] = None
+    wxpusher_uids_raw: Optional[str] = Field(default=None, validation_alias=WXPUSHER_UIDS_ENV_NAME)
+    wxpusher_topic_ids_raw: Optional[str] = Field(default=None, validation_alias=WXPUSHER_TOPIC_IDS_ENV_NAME)
+
     rss_feeds_raw: Optional[str] = Field(default=None, validation_alias=RSS_FEEDS_ENV_NAME)
 
     _rss_feeds: list[str] = PrivateAttr(default_factory=list)
     _rss_feeds_configured: bool = PrivateAttr(default=False)
+    _wxpusher_uids: list[str] = PrivateAttr(default_factory=list)
+    _wxpusher_topic_ids: list[int] = PrivateAttr(default_factory=list)
 
     model_config = SettingsConfigDict(
         env_file=(ROOT_DIR / ".env", BASE_DIR / ".env"),
@@ -49,6 +59,8 @@ class Settings(BaseSettings):
     def model_post_init(self, __context) -> None:
         self._rss_feeds_configured = self.rss_feeds_raw is not None
         self._rss_feeds = parse_rss_feeds(self.rss_feeds_raw)
+        self._wxpusher_uids = parse_csv_strings(self.wxpusher_uids_raw)
+        self._wxpusher_topic_ids = parse_csv_ints(self.wxpusher_topic_ids_raw, WXPUSHER_TOPIC_IDS_ENV_NAME)
 
     @property
     def rss_feeds(self) -> list[str]:
@@ -57,6 +69,14 @@ class Settings(BaseSettings):
     @property
     def rss_feeds_configured(self) -> bool:
         return self._rss_feeds_configured
+
+    @property
+    def wxpusher_uids(self) -> list[str]:
+        return list(self._wxpusher_uids)
+
+    @property
+    def wxpusher_topic_ids(self) -> list[int]:
+        return list(self._wxpusher_topic_ids)
 
 
 def parse_rss_feeds(value: str | None) -> list[str]:
@@ -92,6 +112,22 @@ def parse_rss_feeds(value: str | None) -> list[str]:
 
 def _normalize_feed_url(value: str) -> str:
     return " ".join(value.strip().split())
+
+
+def parse_csv_strings(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [part.strip() for part in value.split(",") if part.strip()]
+
+
+def parse_csv_ints(value: str | None, field_name: str) -> list[int]:
+    values: list[int] = []
+    for part in parse_csv_strings(value):
+        try:
+            values.append(int(part))
+        except ValueError:
+            logger.warning("Ignored invalid integer value in %s", field_name)
+    return values
 
 
 @lru_cache

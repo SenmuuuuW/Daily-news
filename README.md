@@ -241,6 +241,46 @@ Enterprise WeChat will not send unless all of these are true:
 
 The webhook URL should stay in `.env` or your shell environment and must not be committed. The app never prints the full webhook URL.
 
+## Normal WeChat Push With WxPusher
+
+Enterprise WeChat webhook delivery sends messages to Enterprise WeChat groups. For this MVP, WxPusher is the first supported option for sending test RSS digests to normal WeChat users.
+
+Before testing, the receiving users may need to scan, subscribe, or follow your WxPusher app/channel so you can obtain UIDs or topic IDs. This is for controlled testing only. A long-term official WeChat account or service account integration can be considered later.
+
+Example `.env` values:
+
+```bash
+DAILY_DIGEST_WECHAT_PUSH_PROVIDER=wxpusher
+DAILY_DIGEST_ENABLE_WECHAT_PUSH=false
+DAILY_DIGEST_WXPUSHER_APP_TOKEN=replace-me
+DAILY_DIGEST_WXPUSHER_UIDS=uid1,uid2
+DAILY_DIGEST_WXPUSHER_TOPIC_IDS=
+```
+
+Dry run, no normal WeChat push:
+
+```bash
+cd backend
+python -m scripts.run_rss_profile --profile ai_tech
+```
+
+Safe one-time normal WeChat push through WxPusher:
+
+```bash
+cd backend
+CONFIRM_WECHAT_SEND=YES DAILY_DIGEST_ENABLE_WECHAT_PUSH=true python -m scripts.run_rss_profile --profile ai_tech --send-wechat
+```
+
+It will not send unless all of these are true:
+
+- `--send-wechat` is passed
+- `CONFIRM_WECHAT_SEND=YES` is set
+- `DAILY_DIGEST_ENABLE_WECHAT_PUSH=true` is set
+- `DAILY_DIGEST_WXPUSHER_APP_TOKEN` is configured
+- at least one `DAILY_DIGEST_WXPUSHER_UIDS` or `DAILY_DIGEST_WXPUSHER_TOPIC_IDS` value is configured
+
+Keep the WxPusher app token in `.env` or your shell environment. Do not commit real tokens, UIDs, topic IDs, or generated digest outputs.
+
 ## Enterprise WeChat Webhook
 
 Point the Enterprise WeChat callback URL at:
