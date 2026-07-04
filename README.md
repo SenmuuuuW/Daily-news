@@ -281,6 +281,65 @@ It will not send unless all of these are true:
 
 Keep the WxPusher app token in `.env` or your shell environment. Do not commit real tokens, UIDs, topic IDs, or generated digest outputs.
 
+## WeCom External Contact / Customer Group Delivery
+
+This is the formal path for normal WeChat customers to receive reports through Enterprise WeChat customer contact or customer group capability. Customers do not need to download Enterprise WeChat, but they must be connected to the enterprise as an external contact or be in a WeCom customer group.
+
+This is not the same as the Enterprise WeChat group robot webhook. It requires enterprise admin setup, customer-contact permissions, a sending employee, and valid customer or customer-group targets. Depending on the WeCom account and API permissions, some group-send flows may create a send task that the employee must confirm inside WeCom before the message is delivered.
+
+Setup checklist:
+
+1. Enable customer contact in WeCom admin.
+2. Create or identify the sending employee.
+3. Add a test customer from normal WeChat.
+4. Create a test customer group if testing group delivery.
+5. Get `corp_id`.
+6. Get the customer contact secret.
+7. Get the sender `userId`.
+8. Get `external_userid` or customer group `chat_id`.
+9. Fill `backend/.env`.
+10. Run the config check.
+11. Run a dry RSS digest.
+12. Run a safe external send test.
+
+Example `.env` values:
+
+```bash
+DAILY_DIGEST_WECOM_EXTERNAL_ENABLED=false
+DAILY_DIGEST_WECOM_EXTERNAL_TARGET_TYPE=customer_group
+DAILY_DIGEST_WECOM_CORP_ID=
+DAILY_DIGEST_WECOM_EXTERNAL_CONTACT_SECRET=
+DAILY_DIGEST_WECOM_AGENT_ID=
+DAILY_DIGEST_WECOM_SENDER_USERID=
+DAILY_DIGEST_WECOM_EXTERNAL_USERIDS=
+DAILY_DIGEST_WECOM_CUSTOMER_GROUP_CHAT_IDS=
+DAILY_DIGEST_WECOM_EXTERNAL_DRY_RUN=true
+```
+
+Dry run:
+
+```bash
+cd backend
+python -m scripts.run_rss_profile --profile ai_tech
+```
+
+Check WeCom external config without sending:
+
+```bash
+cd backend
+python -m scripts.check_wecom_external_config
+```
+
+Safe real customer/contact or customer-group send task attempt:
+
+```bash
+cd backend
+CONFIRM_WECOM_EXTERNAL_SEND=YES DAILY_DIGEST_WECOM_EXTERNAL_ENABLED=true \
+  python -m scripts.run_rss_profile --profile ai_tech --send-wecom-external
+```
+
+The script will skip unless `--send-wecom-external`, `CONFIRM_WECOM_EXTERNAL_SEND=YES`, `DAILY_DIGEST_WECOM_EXTERNAL_ENABLED=true`, `corp_id`, customer contact secret, sender `userId`, and target IDs are present. Keep `DAILY_DIGEST_WECOM_EXTERNAL_DRY_RUN=true` while checking setup; set it to `false` only for a deliberate API send-task attempt with real credentials.
+
 ## Enterprise WeChat Webhook
 
 Point the Enterprise WeChat callback URL at:

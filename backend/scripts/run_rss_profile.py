@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 from config import BASE_DIR, settings
+from delivery.wecom_external import send_wecom_external_text, validate_wecom_external_config
 from delivery.wechat_push import send_wechat_push
 from pipeline.clean import dedupe_items, normalize_items
 from pipeline.format import format_wecom_digest
@@ -45,6 +46,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=None, help="Override profile max_items")
     parser.add_argument("--send-wecom", action="store_true", help="Attempt a one-time real WeCom send")
     parser.add_argument("--send-wechat", action="store_true", help="Attempt a one-time normal WeChat send through WxPusher")
+    parser.add_argument("--send-wecom-external", action="store_true", help="Attempt a one-time WeCom external contact/customer group send task")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT_DIR), help="Directory for digest/debug/metrics output")
     parser.add_argument("--profiles-file", default=str(DEFAULT_PROFILE_PATH), help="Path to RSS profile YAML")
     return parser.parse_args()
@@ -114,6 +116,7 @@ async def run_profile(args: argparse.Namespace) -> int:
 
     wecom_send_result = await _maybe_send_wecom(args, digest)
     wechat_send_result = await _maybe_send_wechat(args, profile.name, digest)
+    wecom_external_send_result = await _maybe_send_wecom_external(args, profile.name, digest)
     metrics = _build_metrics(
         profile=profile,
         feed_metrics=fetcher.last_metrics,
@@ -127,6 +130,7 @@ async def run_profile(args: argparse.Namespace) -> int:
         empty_reason=empty_reason,
         send_result=wecom_send_result,
         wechat_send_result=wechat_send_result,
+        wecom_external_send_result=wecom_external_send_result,
     )
 
     output_files = _save_outputs(Path(args.output), profile.name, digest, metrics, {
@@ -193,6 +197,42 @@ async def _maybe_send_wechat(args: argparse.Namespace, profile_name: str, digest
     }
 
 
+async def _maybe_send_wecom_external(args: argparse.Namespace, profile_name: str, digest: str) -> dict[str, Any]:
+    target_type = settings.wecom_external_target_type.strip().lower()
+    reasons = []
+    if not args.send_wecom_external:
+        reasons.append("--send-wecom-external was not passed")
+    if os.getenv("CONFIRM_WECOM_EXTERNAL_SEND") != "YES":
+        reasons.append("CONFIRM_WECOM_EXTERNAL_SEND=YES is not set")
+    if not settings.wecom_external_enabled:
+        reasons.append("DAILY_DIGEST_WECOM_EXTERNAL_ENABLED=true is not set")
+
+    readiness = validate_wecom_external_config(target_type)
+    if not readiness.ok:
+        reasons.extend((readiness.raw or {}).get("reasons") or [readiness.message])
+
+    if reasons:
+        print("WeCom external send skipped: " + "; ".join(reasons))
+        return {"attempted": False, "sent": False, "provider": "wecom_external", "target_type": target_type, "skipped_reasons": reasons}
+
+    print("WeCom external send enabled for this one run; creating/sending external contact task now.")
+    result = await send_wecom_external_text(
+        title=f"Daily Intelligence Brief - {profile_name}",
+        content=digest,
+        target_type=target_type,
+    )
+    print(f"WeCom external result: ok={result.ok} message={result.message}")
+    return {
+        "attempted": True,
+        "sent": result.ok,
+        "provider": result.provider,
+        "target_type": target_type,
+        "status_code": result.status_code,
+        "message": result.message,
+        "skipped_reasons": [],
+    }
+
+
 def _build_metrics(
     profile: RSSProfile,
     feed_metrics: dict[str, Any],
@@ -206,6 +246,7 @@ def _build_metrics(
     empty_reason: str | None,
     send_result: dict[str, Any],
     wechat_send_result: dict[str, Any],
+    wecom_external_send_result: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "profile_name": profile.name,
@@ -225,6 +266,7 @@ def _build_metrics(
         "empty_digest_reason": empty_reason,
         "send_result": send_result,
         "wechat_send_result": wechat_send_result,
+        "wecom_external_send_result": wecom_external_send_result,
     }
 
 

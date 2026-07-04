@@ -15,6 +15,8 @@ ROOT_DIR = BASE_DIR.parent
 RSS_FEEDS_ENV_NAME = "DAILY_DIGEST_RSS_FEEDS"
 WXPUSHER_UIDS_ENV_NAME = "DAILY_DIGEST_WXPUSHER_UIDS"
 WXPUSHER_TOPIC_IDS_ENV_NAME = "DAILY_DIGEST_WXPUSHER_TOPIC_IDS"
+WECOM_EXTERNAL_USERIDS_ENV_NAME = "DAILY_DIGEST_WECOM_EXTERNAL_USERIDS"
+WECOM_CUSTOMER_GROUP_CHAT_IDS_ENV_NAME = "DAILY_DIGEST_WECOM_CUSTOMER_GROUP_CHAT_IDS"
 logger = logging.getLogger(__name__)
 
 
@@ -43,12 +45,24 @@ class Settings(BaseSettings):
     wxpusher_uids_raw: Optional[str] = Field(default=None, validation_alias=WXPUSHER_UIDS_ENV_NAME)
     wxpusher_topic_ids_raw: Optional[str] = Field(default=None, validation_alias=WXPUSHER_TOPIC_IDS_ENV_NAME)
 
+    wecom_external_enabled: bool = False
+    wecom_external_target_type: str = "customer_group"
+    wecom_corp_id: Optional[str] = None
+    wecom_external_contact_secret: Optional[str] = None
+    wecom_agent_id: Optional[str] = None
+    wecom_sender_userid: Optional[str] = None
+    wecom_external_userids_raw: Optional[str] = Field(default=None, validation_alias=WECOM_EXTERNAL_USERIDS_ENV_NAME)
+    wecom_customer_group_chat_ids_raw: Optional[str] = Field(default=None, validation_alias=WECOM_CUSTOMER_GROUP_CHAT_IDS_ENV_NAME)
+    wecom_external_dry_run: bool = True
+
     rss_feeds_raw: Optional[str] = Field(default=None, validation_alias=RSS_FEEDS_ENV_NAME)
 
     _rss_feeds: list[str] = PrivateAttr(default_factory=list)
     _rss_feeds_configured: bool = PrivateAttr(default=False)
     _wxpusher_uids: list[str] = PrivateAttr(default_factory=list)
     _wxpusher_topic_ids: list[int] = PrivateAttr(default_factory=list)
+    _wecom_external_userids: list[str] = PrivateAttr(default_factory=list)
+    _wecom_customer_group_chat_ids: list[str] = PrivateAttr(default_factory=list)
 
     model_config = SettingsConfigDict(
         env_file=(ROOT_DIR / ".env", BASE_DIR / ".env"),
@@ -61,6 +75,8 @@ class Settings(BaseSettings):
         self._rss_feeds = parse_rss_feeds(self.rss_feeds_raw)
         self._wxpusher_uids = parse_csv_strings(self.wxpusher_uids_raw)
         self._wxpusher_topic_ids = parse_csv_ints(self.wxpusher_topic_ids_raw, WXPUSHER_TOPIC_IDS_ENV_NAME)
+        self._wecom_external_userids = parse_csv_strings(self.wecom_external_userids_raw)
+        self._wecom_customer_group_chat_ids = parse_csv_strings(self.wecom_customer_group_chat_ids_raw)
 
     @property
     def rss_feeds(self) -> list[str]:
@@ -77,6 +93,14 @@ class Settings(BaseSettings):
     @property
     def wxpusher_topic_ids(self) -> list[int]:
         return list(self._wxpusher_topic_ids)
+
+    @property
+    def wecom_external_userids(self) -> list[str]:
+        return list(self._wecom_external_userids)
+
+    @property
+    def wecom_customer_group_chat_ids(self) -> list[str]:
+        return list(self._wecom_customer_group_chat_ids)
 
 
 def parse_rss_feeds(value: str | None) -> list[str]:
